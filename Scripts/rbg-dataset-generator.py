@@ -3,7 +3,7 @@ import random
 import os
 
 # Diretório onde os arquivos serão salvos
-diretorio_saida = r"C:\Dataset"
+diretorio_saida = "/home/nicolas-amaral/Repositories/color-harmony-helper/Datasets"
 
 # Função para gerar cores harmônicas
 def gerar_grupo_harmonico():
@@ -67,15 +67,15 @@ def determinar_nome_arquivo(diretorio, base_nome="dataset_rgb_rotulado"):
     numeros = []
 
     for arquivo in arquivos_existentes:
-        if arquivo.startswith(base_nome) and arquivo.endswith(".xlsx"):
+        if arquivo.startswith(base_nome) and arquivo.endswith(".csv"):
             try:
-                numero = int(arquivo.replace(base_nome, "").replace(".xlsx", ""))
+                numero = int(arquivo.replace(base_nome, "").replace(".csv", ""))
                 numeros.append(numero)
             except ValueError:
                 pass
 
     proximo_numero = max(numeros) + 1 if numeros else 1
-    return f"{base_nome}{proximo_numero}.xlsx"
+    return f"{base_nome}{proximo_numero}.csv"
 
 # Gera cores e rótulos com variação nas proporções
 cores, rotulos, proporcao_harmonicos, proporcao_nao_harmonicos = gerar_cores(linhas=10000, proporcao_min_harmonicos=0.4, proporcao_min_nao_harmonicos=0.4)
@@ -93,8 +93,8 @@ calcular_porcentagem_harmonia(rotulos)
 # Determina o próximo nome do arquivo
 nome_arquivo = determinar_nome_arquivo(diretorio_saida)
 
-# Salva o novo Excel
-caminho_saida = os.path.join(diretorio_saida, nome_arquivo)
-df.to_excel(caminho_saida, index=False)
+# Salva o novo 
+caminho_saida = os.path.join(diretorio_saida,  f"{nome_arquivo}")
+df.to_csv(caminho_saida, index=False)
 
 print(f"Arquivo salvo em: {caminho_saida}")
