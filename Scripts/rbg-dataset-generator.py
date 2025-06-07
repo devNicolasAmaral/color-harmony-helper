@@ -3,7 +3,7 @@ import random
 import os
 
 # Diretório onde os arquivos serão salvos
-diretorio_saida = "/home/nicolas-amaral/Repositories/color-harmony-helper/Datasets"
+diretorio_saida = "C:/Datasets"
 
 # Função para gerar cores harmônicas
 def gerar_grupo_harmonico():
