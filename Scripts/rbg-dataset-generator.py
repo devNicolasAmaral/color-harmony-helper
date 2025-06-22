@@ -2,31 +2,26 @@ import pandas as pd
 import random
 import os
 
-# Diretório onde os arquivos serão salvos
-diretorio_saida = "C:/Datasets"
+# 📁 Caminho relativo para salvar na pasta Datasets (vizinha da pasta Scripts)
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+diretorio_saida = os.path.join(base_dir, "Datasets")
 
-# Função para gerar cores harmônicas
+# 🎨 Função para gerar grupo harmônico (variação leve e consistente)
 def gerar_grupo_harmonico():
-    base = [random.randint(0, 255) for _ in range(3)]
-    return [
-        base,
-        [min(255, base[0] + random.randint(-10, 10)), min(255, base[1] + random.randint(-10, 10)), min(255, base[2] + random.randint(-10, 10))],
-        [min(255, base[0] + random.randint(-20, 20)), min(255, base[1] + random.randint(-20, 20)), min(255, base[2] + random.randint(-20, 20))],
-    ]
+    base = [random.randint(60, 195) for _ in range(3)]  # valores medianos para melhor contraste
+    grupo = [base]
+    for _ in range(4):  # total de 5 cores
+        variacao = [max(0, min(255, base[i] + random.randint(-8, 8))) for i in range(3)]
+        grupo.append(variacao)
+    return grupo
 
-# Função para gerar cores não harmônicas
+# ❌ Função para gerar grupo não harmônico (totalmente aleatório)
 def gerar_grupo_nao_harmonico():
-    return [
-        [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)],
-        [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)],
-        [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)],
-    ]
+    return [[random.randint(0, 255) for _ in range(3)] for _ in range(5)]
 
-# Função para gerar X linhas de cores com variação na proporção
-def gerar_cores(linhas=100000, proporcao_min_harmonicos=0.4, proporcao_min_nao_harmonicos=0.4):
-    total_grupos = linhas // 3
-
-    # Adiciona variação nas proporções
+# 🔄 Gerador principal
+def gerar_cores(linhas=500000, proporcao_min_harmonicos=0.45, proporcao_min_nao_harmonicos=0.45):
+    total_grupos = linhas // 5
     proporcao_harmonicos = random.uniform(proporcao_min_harmonicos, 1 - proporcao_min_nao_harmonicos)
     proporcao_nao_harmonicos = 1 - proporcao_harmonicos
 
@@ -36,65 +31,57 @@ def gerar_cores(linhas=100000, proporcao_min_harmonicos=0.4, proporcao_min_nao_h
     cores = []
     rotulos = []
 
-    # Gera grupos harmônicos
     for _ in range(grupos_harmonicos):
         cores.extend(gerar_grupo_harmonico())
-        rotulos.extend(["harmonico"] * 3)
+        rotulos.extend(["harmonico"] * 5)
 
-    # Gera grupos não harmônicos
     for _ in range(grupos_nao_harmonicos):
         cores.extend(gerar_grupo_nao_harmonico())
-        rotulos.extend(["nao_harmonico"] * 3)
+        rotulos.extend(["nao_harmonico"] * 5)
 
     return cores, rotulos, proporcao_harmonicos, proporcao_nao_harmonicos
 
-# Função para calcular porcentagens de harmonia
+# 📊 Estatísticas
 def calcular_porcentagem_harmonia(rotulos):
-    total_grupos = len(rotulos) // 3
-    harmonicos = rotulos.count("harmonico") // 3
-    nao_harmonicos = rotulos.count("nao_harmonico") // 3
+    total_grupos = len(rotulos) // 5
+    harmonicos = rotulos.count("harmonico") // 5
+    nao_harmonicos = rotulos.count("nao_harmonico") // 5
 
-    perc_harmonicos = (harmonicos / total_grupos) * 100
-    perc_nao_harmonicos = (nao_harmonicos / total_grupos) * 100
+    print(f"📦 Total de grupos: {total_grupos}")
+    print(f"🎼 Harmônicos: {harmonicos} ({(harmonicos / total_grupos) * 100:.2f}%)")
+    print(f"💥 Não harmônicos: {nao_harmonicos} ({(nao_harmonicos / total_grupos) * 100:.2f}%)")
 
-    print(f"Total de grupos: {total_grupos}")
-    print(f"Grupos harmônicos: {perc_harmonicos:.2f}%")
-    print(f"Grupos não harmônicos: {perc_nao_harmonicos:.2f}%")
-
-# Função para determinar o próximo nome do arquivo
+# 💾 Nome automático para o arquivo
 def determinar_nome_arquivo(diretorio, base_nome="dataset_rgb_rotulado"):
-    arquivos_existentes = os.listdir(diretorio)
+    arquivos = os.listdir(diretorio)
     numeros = []
-
-    for arquivo in arquivos_existentes:
+    for arquivo in arquivos:
         if arquivo.startswith(base_nome) and arquivo.endswith(".csv"):
             try:
                 numero = int(arquivo.replace(base_nome, "").replace(".csv", ""))
                 numeros.append(numero)
-            except ValueError:
-                pass
-
+            except:
+                continue
     proximo_numero = max(numeros) + 1 if numeros else 1
     return f"{base_nome}{proximo_numero}.csv"
 
-# Gera cores e rótulos com variação nas proporções
-cores, rotulos, proporcao_harmonicos, proporcao_nao_harmonicos = gerar_cores(linhas=10000, proporcao_min_harmonicos=0.4, proporcao_min_nao_harmonicos=0.4)
+# 🚀 Execução principal
+if __name__ == "__main__":
+    cores, rotulos, prop_harm, prop_nao_harm = gerar_cores(
+        linhas=500000,
+        proporcao_min_harmonicos=0.45,
+        proporcao_min_nao_harmonicos=0.45
+    )
 
-# Cria DataFrame
-df = pd.DataFrame(cores, columns=["R", "G", "B"])
-df['RÓTULO'] = rotulos
+    df = pd.DataFrame(cores, columns=["R", "G", "B"])
+    df["RÓTULO"] = rotulos
+    df["GRUPO"] = [i // 5 + 1 for i in range(len(df))]
 
-# Adiciona coluna de grupos
-df['GRUPO'] = [i // 3 + 1 for i in range(len(df))]
+    calcular_porcentagem_harmonia(rotulos)
 
-# Calcula e exibir as porcentagens de harmonia
-calcular_porcentagem_harmonia(rotulos)
+    os.makedirs(diretorio_saida, exist_ok=True)
+    nome_arquivo = determinar_nome_arquivo(diretorio_saida)
+    caminho_saida = os.path.join(diretorio_saida, nome_arquivo)
 
-# Determina o próximo nome do arquivo
-nome_arquivo = determinar_nome_arquivo(diretorio_saida)
-
-# Salva o novo 
-caminho_saida = os.path.join(diretorio_saida,  f"{nome_arquivo}")
-df.to_csv(caminho_saida, index=False)
-
-print(f"Arquivo salvo em: {caminho_saida}")
+    df.to_csv(caminho_saida, index=False)
+    print(f"\n✅ Arquivo salvo em: {caminho_saida}")
