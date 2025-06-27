@@ -1,160 +1,200 @@
+import os
+import re
 import pandas as pd
-from sklearn.model_selection import train_test_split, cross_val_score, KFold, learning_curve # Adicionado learning_curve
-from sklearn.naive_bayes import GaussianNB
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 import numpy as np
-import matplotlib.pyplot as plt # Adicionado matplotlib
+from sklearn.model_selection import train_test_split, cross_val_score, StratifiedKFold, learning_curve
+from sklearn.naive_bayes import GaussianNB
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_selection import SelectKBest, f_classif
+import matplotlib.pyplot as plt
+from skimage.color import rgb2lab
+from itertools import combinations
+import seaborn as sns
+import joblib
 
-# 1. Carregar o Dataset
-try:
-    # Adapte o caminho para o seu arquivo CSV gerado
-    df = pd.read_csv("/home/nicolas-amaral/Repositories/color-harmony-helper/Datasets/dataset_rgb_rotulado1.csv") #
-except FileNotFoundError:
-    print("Arquivo do dataset não encontrado. Verifique o caminho.")
-    exit()
+print("1: Localizando o dataset mais recente...")
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+datasets_dir = os.path.join(base_dir, "Datasets")
+arquivos_csv = [f for f in os.listdir(datasets_dir) if re.match(r'dataset_rgb_rotulado\d+\.csv', f)]
+if not arquivos_csv:
+    raise FileNotFoundError("Nenhum arquivo encontrado.")
+ultimo_csv = sorted(arquivos_csv, key=lambda x: int(re.findall(r'\d+', x)[0]))[-1]
+caminho_csv = os.path.join(datasets_dir, ultimo_csv)
+print(f"Usando o dataset: {caminho_csv}")
 
-print("Dataset original carregado:")
-print(df.head(6))
+print("2: Lendo e agrupando os dados...")
+df = pd.read_csv(caminho_csv).dropna().copy()
+df["GRUPO"] = df["GRUPO"].astype(int)
 
-# 2. Preparação dos Dados para Grupos
-grouped = df.groupby('GRUPO')
-features_list = []
-labels_list = []
+def agrupar_cores(df):
+    grupos = df['GRUPO'].unique()
+    dados, rotulos = [], []
+    for g in grupos:
+        grupo_df = df[df['GRUPO'] == g].reset_index(drop=True)
+        if len(grupo_df) < 5:
+            continue
+        grupo_df = grupo_df.iloc[:5]
+        linha = []
+        for i in range(5):
+            linha.extend([grupo_df.loc[i, 'R'], grupo_df.loc[i, 'G'], grupo_df.loc[i, 'B']])
+        dados.append(linha)
+        rotulos.append(1 if grupo_df.loc[0, 'RÓTULO'] == 'harmonico' else 0)
+    return pd.DataFrame(dados, columns=[f'{c}{i}' for i in range(1,6) for c in ['R','G','B']]), rotulos
 
-for group_name, group_data in grouped:
-    if len(group_data) == 3:
-        feature_row = group_data[['R', 'G', 'B']].values.flatten().tolist()
-        features_list.append(feature_row)
-        label = 1 if group_data['RÓTULO'].iloc[0] == 'harmonico' else 0 #
-        labels_list.append(label)
+X_rgb, y_bin = agrupar_cores(df)
+print(f"Grupos válidos encontrados: {len(X_rgb)}")
+if len(X_rgb) == 0:
+    raise ValueError("Nenhum grupo válido encontrado.")
 
-X_grouped = pd.DataFrame(features_list)
-y_grouped = pd.Series(labels_list)
+print("3: Convertendo RGB para LAB...")
+def rgb_quintuples_to_lab(df_rgb):
+    labs = []
+    for _, row in df_rgb.iterrows():
+        rgb_colors = np.array([
+            [row[f'R{i}'], row[f'G{i}'], row[f'B{i}']] for i in range(1,6)
+        ], dtype=np.uint8)[np.newaxis, :, :] / 255.0
+        lab_colors = rgb2lab(rgb_colors)[0]
+        labs.append(lab_colors.flatten())
+    cols_lab = [f'{c}{i}' for i in range(1,6) for c in ['L','a','b']]
+    return pd.DataFrame(labs, columns=cols_lab)
 
-if X_grouped.shape[1] == 9:
-    X_grouped.columns = ['R1', 'G1', 'B1', 'R2', 'G2', 'B2', 'R3', 'G3', 'B3']
+X_lab = rgb_quintuples_to_lab(X_rgb)
 
-print("\nDataset processado para grupos:")
-print(X_grouped.head())
-print("\nRótulos dos grupos:")
-print(y_grouped.head())
-print(f"\nDistribuição das classes dos grupos:\n{y_grouped.value_counts(normalize=True)}")
+print("4: Extraindo features...")
+def extrair_features(df_lab):
+    features = pd.DataFrame()
+    features['L_mean'] = df_lab[[f'L{i}' for i in range(1,6)]].mean(axis=1)
+    features['a_mean'] = df_lab[[f'a{i}' for i in range(1,6)]].mean(axis=1)
+    features['b_mean'] = df_lab[[f'b{i}' for i in range(1,6)]].mean(axis=1)
+    features['L_std'] = df_lab[[f'L{i}' for i in range(1,6)]].std(axis=1)
+    features['a_std'] = df_lab[[f'a{i}' for i in range(1,6)]].std(axis=1)
+    features['b_std'] = df_lab[[f'b{i}' for i in range(1,6)]].std(axis=1)
 
-# 3. Treinamento do Modelo Gaussian Naive Bayes
-model = GaussianNB() #
+    def dist(l1, a1, b1, l2, a2, b2):
+        return np.sqrt((l1 - l2)**2 + (a1 - a2)**2 + (b1 - b2)**2)
 
-# ---------------------------------------------------------------------------
-# 3.1 GERAR DADOS PARA CURVA DE APRENDIZADO E PLOTAR
-# ---------------------------------------------------------------------------
-# Definir os tamanhos das porções do dataset de treinamento a serem usadas
-# np.linspace(0.1, 1.0, 10) significa usar 10 passos, de 10% a 100% do dataset
-train_sizes_abs, train_scores, test_scores = learning_curve(
-    model,
-    X_grouped,
-    y_grouped,
-    cv=KFold(n_splits=5, shuffle=True, random_state=42), # Usar a mesma estratégia de CV
+    dist_cols = []
+    for i, j in combinations(range(1,6), 2):
+        col = f'dist_{i}_{j}'
+        features[col] = dist(
+            df_lab[f'L{i}'], df_lab[f'a{i}'], df_lab[f'b{i}'],
+            df_lab[f'L{j}'], df_lab[f'a{j}'], df_lab[f'b{j}']
+        )
+        dist_cols.append(col)
+
+    features['media_dist'] = features[dist_cols].mean(axis=1)
+    features['raz_dist_1_5_1_2'] = features['dist_1_5'] / (features['dist_1_2'] + 1e-5)
+    return features
+
+X_features = extrair_features(X_lab)
+X_final = pd.concat([X_lab, X_features], axis=1)
+
+print("5: Padronizando e selecionando as melhores features...")
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X_final)
+noise_level = 0.8
+ruido = np.random.normal(0, noise_level, X_scaled.shape)
+X_scaled_com_ruido = X_scaled + ruido
+
+selector = SelectKBest(score_func=f_classif, k=2)
+X_selected = selector.fit_transform(X_scaled_com_ruido, y_bin) 
+feature_names = X_final.columns[selector.get_support()]
+
+print("6: Curva de aprendizado...")
+model = GaussianNB()
+train_sizes, train_scores, test_scores = learning_curve(
+    model, X_selected, y_bin,
+    cv=StratifiedKFold(n_splits=5, shuffle=True, random_state=42),
     scoring='accuracy',
-    n_jobs=-1, # Usar todos os processadores disponíveis
     train_sizes=np.linspace(0.1, 1.0, 10),
-    random_state=42 # Para reprodutibilidade da função learning_curve
+    n_jobs=-1
 )
 
-# Calcular médias e desvios padrão para as pontuações de treinamento
-train_scores_mean = np.mean(train_scores, axis=1)
-train_scores_std = np.std(train_scores, axis=1)
-
-# Calcular médias e desvios padrão para as pontuações de validação cruzada (teste)
-test_scores_mean = np.mean(test_scores, axis=1)
-test_scores_std = np.std(test_scores, axis=1)
-
-# Armazenar os resultados (você pode salvar em arquivos CSV/NPY se precisar)
-learning_curve_data = {
-    "train_sizes_abs": train_sizes_abs,
-    "train_scores_mean": train_scores_mean,
-    "train_scores_std": train_scores_std,
-    "test_scores_mean": test_scores_mean,
-    "test_scores_std": test_scores_std
-}
-print("\nDados da Curva de Aprendizado Coletados.")
-# Exemplo: print(pd.DataFrame(learning_curve_data)) # Para ver os dados tabulados
-
-# Plotar a curva de aprendizado
-plt.figure(figsize=(10, 6))
-plt.title("Curva de Aprendizado (Gaussian Naive Bayes)")
-plt.xlabel("Número de Amostras de Treinamento")
-plt.ylabel("Pontuação (Acurácia)")
+plt.figure(figsize=(10,6))
+plt.title("Curva de Aprendizado (GaussianNB)")
+plt.xlabel("Tamanho do Treinamento")
+plt.ylabel("Acurácia")
 plt.grid(True)
-
-plt.fill_between(train_sizes_abs, train_scores_mean - train_scores_std,
-                 train_scores_mean + train_scores_std, alpha=0.1, color="r")
-plt.fill_between(train_sizes_abs, test_scores_mean - test_scores_std,
-                 test_scores_mean + test_scores_std, alpha=0.1, color="g")
-
-plt.plot(train_sizes_abs, train_scores_mean, 'o-', color="r", label="Pontuação de Treinamento")
-plt.plot(train_sizes_abs, test_scores_mean, 'o-', color="g", label="Pontuação de Validação Cruzada")
-
+plt.plot(train_sizes, np.mean(train_scores, axis=1), 'o-', label="Treino")
+plt.plot(train_sizes, np.mean(test_scores, axis=1), 'o-', label="Validação")
 plt.legend(loc="best")
-plt.show() # Exibe o gráfico. Para salvar: plt.savefig('curva_aprendizado.png')
+plt.tight_layout()
+plt.show()
 
-# ---------------------------------------------------------------------------
-# 4. Validação do Modelo (usando cross_val_score para uma avaliação geral)
-# ---------------------------------------------------------------------------
-kf = KFold(n_splits=5, shuffle=True, random_state=42) #
-cv_results = cross_val_score(model, X_grouped, y_grouped, cv=kf, scoring='accuracy') #
+print("7: Validação cruzada...")
+cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+cv_scores = cross_val_score(GaussianNB(), X_selected, y_bin, cv=cv, scoring='accuracy')
+print(f"Acurácias (CV): {cv_scores}")
+print(f"Acurácia média: {np.mean(cv_scores):.4f}")
+print(f"Desvio padrão: {np.std(cv_scores):.4f}")
 
-print(f"\nAcurácia da Validação Cruzada (k=5) para grupos: {cv_results}")
-print(f"Acurácia Média: {np.mean(cv_results):.4f}")
-print(f"Desvio Padrão da Acurácia: {np.std(cv_results):.4f}")
+print("8: Avaliação final do modelo (com threshold = 0.35 e priors = [0.25, 0.75])...")
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y_bin, test_size=0.2, random_state=42, stratify=y_bin)
 
-if np.mean(cv_results) >= 0.95: #
-    print("Acurácia média na validação cruzada ATINGIU o mínimo de 95%.") #
-else:
-    print("ALERTA: Acurácia média na validação cruzada ABAIXO do mínimo de 95%.") #
+model = GaussianNB()
+model.fit(X_train, y_train)
 
-# Para calcular Taxa de Falsos Positivos e Negativos (usando uma divisão treino/teste)
-X_train, X_test, y_train, y_test = train_test_split(X_grouped, y_grouped, test_size=0.2, random_state=42, stratify=y_grouped)
+threshold = 0.95
+probas = model.predict_proba(X_test)
+y_pred_adjusted = (probas[:, 1] >= threshold).astype(int)
 
-# É importante treinar um novo modelo aqui para a avaliação em X_test,
-# ou usar o 'model' que já foi treinado pela learning_curve na última iteração (com todos os dados).
-# Para consistência e avaliação da capacidade de generalização, vamos treinar um modelo com X_train.
-model_for_report = GaussianNB()
-model_for_report.fit(X_train, y_train)
-y_pred = model_for_report.predict(X_test)
+print("\nRelatório de Classificação (com threshold e priors ajustados):")
+print(classification_report(y_test, y_pred_adjusted, target_names=['nao_harmonico', 'harmonico']))
 
-accuracy_test = accuracy_score(y_test, y_pred)
-print(f"\nAcurácia no conjunto de teste (grupos): {accuracy_test:.4f}")
-
-print("\nRelatório de Classificação (grupos):")
-print(classification_report(y_test, y_pred, target_names=['nao_harmonico', 'harmonico'])) #
-
-print("\nMatriz de Confusão (grupos):")
-cm = confusion_matrix(y_test, y_pred)
+cm = confusion_matrix(y_test, y_pred_adjusted)
+print("Matriz de Confusão:")
 print(cm)
 
 tn, fp, fn, tp = cm.ravel()
-false_positive_rate = fp / (fp + tn) if (fp + tn) > 0 else 0
-false_negative_rate = fn / (fn + tp) if (fn + tp) > 0 else 0
+fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+print(f"Taxa de Falsos Positivos (FPR): {fpr:.4f}")
+print(f"Taxa de Falsos Negativos (FNR): {fnr:.4f}")
 
-print(f"Taxa de Falsos Positivos (FPR) para grupos: {false_positive_rate:.4f}") #
-print(f"Taxa de Falsos Negativos (FNR) para grupos: {false_negative_rate:.4f}") #
-
-if false_positive_rate <= 0.05: #
-    print("Taxa de Falsos Positivos DENTRO do limite de 5%.") #
+if np.mean(cv_scores) >= 0.95 and fpr <= 0.05 and fnr <= 0.05:
+    print("Modelo validado com sucesso e pronto para uso.")
 else:
-    print("ALERTA: Taxa de Falsos Positivos ACIMA do limite de 5%.") #
+    print("Modelo ainda não atendeu aos critérios desejados.")
 
-if false_negative_rate <= 0.05: #
-    print("Taxa de Falsos Negativos DENTRO do limite de 5%.") #
-else:
-    print("ALERTA: Taxa de Falsos Negativos ACIMA do limite de 5%.") #
+# Matriz de confusão visual
+print("Matriz de Confusão Visual")
+fig, ax = plt.subplots(figsize=(6, 6))
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['nao_harmonico', 'harmonico'])
+disp.plot(ax=ax, cmap='Blues', colorbar=False, values_format='d')
+plt.title("Matriz de Confusão (threshold = 0.35, priors = [0.25, 0.75])")
+plt.grid(False)
+plt.tight_layout()
+plt.show()
 
-# 5. Treinar o modelo com todo o dataset de grupos para uso final
-if np.mean(cv_results) >= 0.95 and false_positive_rate <= 0.05 and false_negative_rate <= 0.05: #
-    print("\nTreinando o modelo final com todos os dados de GRUPOS...")
-    final_model_grouped = GaussianNB() #
-    final_model_grouped.fit(X_grouped, y_grouped)
-    print("Modelo final (para grupos) treinado e pronto para ser salvo/usado.")
-    # import joblib
-    # joblib.dump(final_model_grouped, 'modelo_naive_bayes_grupos_cores.pkl')
-else:
-    print("\nO modelo (para grupos) não atendeu a todos os critérios de validação. Revisar dataset ou parâmetros.")
+# Etapa Final: Salvando o modelo treinado
+print("\nEtapa Final: Salvando o modelo treinado...")
+
+# Caminho relativo da pasta Scripts → para a pasta vizinha Modelo
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+modelo_dir = os.path.join(base_dir, "Modelo")
+os.makedirs(modelo_dir, exist_ok=True)
+
+caminho_modelo = os.path.join(modelo_dir, "modelo_naive_bayes_treinado.pkl")
+
+# Salva apenas o modelo final treinado com priors
+joblib.dump(model, caminho_modelo)
+
+print(f"Modelo salvo com sucesso em: {caminho_modelo}")
+
+#Salvando scaler e seletor de features
+print("\nSalvando scaler e seletor de features...")
+
+# Criar pasta Modelo se não existir
+os.makedirs(modelo_dir, exist_ok=True)
+
+# Salvar scaler
+caminho_scaler = os.path.join(modelo_dir, "scaler_naive.pkl")
+joblib.dump(scaler, caminho_scaler)
+
+# Salvar seletor de features
+caminho_selector = os.path.join(modelo_dir, "selector_naive.pkl")
+joblib.dump(selector, caminho_selector)
+
+print(f"Scaler salvo em: {caminho_scaler}")
+print(f"Seletor salvo em: {caminho_selector}")
