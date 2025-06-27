@@ -132,10 +132,10 @@ print(f"Desvio padrão: {np.std(cv_scores):.4f}")
 print("8: Avaliação final do modelo (com threshold = 0.35 e priors = [0.25, 0.75])...")
 X_train, X_test, y_train, y_test = train_test_split(X_selected, y_bin, test_size=0.2, random_state=42, stratify=y_bin)
 
-model = GaussianNB(priors=[0.25, 0.75], var_smoothing=1e-5) 
+model = GaussianNB()
 model.fit(X_train, y_train)
 
-threshold = 0.35
+threshold = 0.95
 probas = model.predict_proba(X_test)
 y_pred_adjusted = (probas[:, 1] >= threshold).astype(int)
 

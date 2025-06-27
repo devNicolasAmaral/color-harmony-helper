@@ -9,7 +9,7 @@ from skimage.color import rgb2lab
 from itertools import combinations
 from PIL import Image
 
-# 📁 Etapa 1: Localizar arquivos salvos
+# 1: Localizar arquivos salvos
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 modelo_dir = os.path.join(base_dir, "Modelo")
 
@@ -21,29 +21,29 @@ modelo = joblib.load(modelo_path)
 scaler = joblib.load(scaler_path)
 selector = joblib.load(selector_path)
 
-# 📤 Etapa 2: Upload da imagem
+# 2: Upload da imagem
 Tk().withdraw()
 caminho_imagem = filedialog.askopenfilename(title="Selecione uma imagem",
                                              filetypes=[("Imagens", "*.jpg *.jpeg *.png")])
 if not caminho_imagem:
-    print("❌ Nenhuma imagem selecionada.")
+    print("Nenhuma imagem selecionada.")
     exit()
 
 imagem = Image.open(caminho_imagem)
 imagem = imagem.convert("RGB")
 imagem = imagem.resize((200, 200))  # Reduz o tamanho para facilitar
 
-# 🎨 Etapa 3: Extrair as 5 cores dominantes
+# 3: Extrair as 5 cores dominantes
 pixels = np.array(imagem).reshape(-1, 3)
 kmeans = KMeans(n_clusters=5, random_state=42)
 kmeans.fit(pixels)
 cores_rgb = kmeans.cluster_centers_.astype(int)
 
-# 🔁 Etapa 4: Converter para LAB
+# 4: Converter para LAB
 cores_rgb_normalizadas = cores_rgb[np.newaxis, :, :] / 255.0
 cores_lab = rgb2lab(cores_rgb_normalizadas)[0].flatten()
 
-# 🧪 Etapa 5: Extrair features da paleta
+# 5: Extrair features da paleta
 def extrair_features_lab(lab):
     df_lab = pd.DataFrame([lab], columns=[f'{c}{i}' for i in range(1,6) for c in ['L','a','b']])
     features = pd.DataFrame()
@@ -72,16 +72,16 @@ def extrair_features_lab(lab):
 
 X_full = extrair_features_lab(cores_lab)
 
-# ⚙️ Etapa 6: Padronizar e selecionar features
+# 6: Padronizar e selecionar features
 X_scaled = scaler.transform(X_full)
 X_selected = selector.transform(X_scaled)
 
-# 🧠 Etapa 7: Classificação com threshold
+# 7: Classificação com threshold
 threshold = 0.35
 proba = modelo.predict_proba(X_selected)[0, 1]
 harmonico = proba >= threshold
 
-# 🎯 Etapa 8: Substituir se não harmonico
+# 8: Substituir se não harmonico
 def gerar_alternativa(cor):
     cor = np.array(cor)
     nova = np.clip(cor + np.random.randint(-15, 15, size=3), 0, 255)
@@ -91,11 +91,11 @@ nova_paleta = cores_rgb.copy()
 if not harmonico:
     for i in range(len(nova_paleta)):
         nova_paleta[i] = gerar_alternativa(nova_paleta[i])
-    print("⚠️ Paleta ajustada para ser mais harmônica.")
+    print("Paleta ajustada para ser mais harmônica.")
 else:
-    print("✅ A paleta extraída já é harmônica!")
+    print("A paleta extraída já é harmônica!")
 
-# 🖼️ Etapa 9: Mostrar paletas lado a lado
+# 9: Mostrar paletas lado a lado
 def mostrar_paletas_juntas(original, ajustada):
     fig, axs = plt.subplots(2, len(original), figsize=(12, 3))
     
