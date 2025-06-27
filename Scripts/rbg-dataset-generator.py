@@ -2,11 +2,11 @@ import pandas as pd
 import random
 import os
 
-# 📁 Caminho relativo para salvar na pasta Datasets (vizinha da pasta Scripts)
+#Caminho para salvar na pasta Datasets (vizinha da pasta Scripts)
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 diretorio_saida = os.path.join(base_dir, "Datasets")
 
-# 🎨 Função para gerar grupo harmônico (variação leve e consistente)
+#Função para gerar grupo harmônico
 def gerar_grupo_harmonico():
     base = [random.randint(60, 195) for _ in range(3)]  # valores medianos para melhor contraste
     grupo = [base]
@@ -15,11 +15,11 @@ def gerar_grupo_harmonico():
         grupo.append(variacao)
     return grupo
 
-# ❌ Função para gerar grupo não harmônico (totalmente aleatório)
+#Função para gerar grupo não harmônico (totalmente aleatório)
 def gerar_grupo_nao_harmonico():
     return [[random.randint(0, 255) for _ in range(3)] for _ in range(5)]
 
-# 🔄 Gerador principal
+#Gerador principal
 def gerar_cores(linhas=500000, proporcao_min_harmonicos=0.45, proporcao_min_nao_harmonicos=0.45):
     total_grupos = linhas // 5
     proporcao_harmonicos = random.uniform(proporcao_min_harmonicos, 1 - proporcao_min_nao_harmonicos)
@@ -41,17 +41,17 @@ def gerar_cores(linhas=500000, proporcao_min_harmonicos=0.45, proporcao_min_nao_
 
     return cores, rotulos, proporcao_harmonicos, proporcao_nao_harmonicos
 
-# 📊 Estatísticas
+#Estatísticas
 def calcular_porcentagem_harmonia(rotulos):
     total_grupos = len(rotulos) // 5
     harmonicos = rotulos.count("harmonico") // 5
     nao_harmonicos = rotulos.count("nao_harmonico") // 5
 
-    print(f"📦 Total de grupos: {total_grupos}")
-    print(f"🎼 Harmônicos: {harmonicos} ({(harmonicos / total_grupos) * 100:.2f}%)")
-    print(f"💥 Não harmônicos: {nao_harmonicos} ({(nao_harmonicos / total_grupos) * 100:.2f}%)")
+    print(f"Total de grupos: {total_grupos}")
+    print(f"Harmônicos: {harmonicos} ({(harmonicos / total_grupos) * 100:.2f}%)")
+    print(f"Não harmônicos: {nao_harmonicos} ({(nao_harmonicos / total_grupos) * 100:.2f}%)")
 
-# 💾 Nome automático para o arquivo
+#Nome automático para o arquivo
 def determinar_nome_arquivo(diretorio, base_nome="dataset_rgb_rotulado"):
     arquivos = os.listdir(diretorio)
     numeros = []
@@ -65,7 +65,7 @@ def determinar_nome_arquivo(diretorio, base_nome="dataset_rgb_rotulado"):
     proximo_numero = max(numeros) + 1 if numeros else 1
     return f"{base_nome}{proximo_numero}.csv"
 
-# 🚀 Execução principal
+#Execução principal
 if __name__ == "__main__":
     cores, rotulos, prop_harm, prop_nao_harm = gerar_cores(
         linhas=500000,
@@ -84,4 +84,4 @@ if __name__ == "__main__":
     caminho_saida = os.path.join(diretorio_saida, nome_arquivo)
 
     df.to_csv(caminho_saida, index=False)
-    print(f"\n✅ Arquivo salvo em: {caminho_saida}")
+    print(f"\nArquivo salvo em: {caminho_saida}")

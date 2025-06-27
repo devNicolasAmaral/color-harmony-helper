@@ -13,17 +13,17 @@ from itertools import combinations
 import seaborn as sns
 import joblib
 
-print("📁 Etapa 1: Localizando o dataset mais recente...")
+print("1: Localizando o dataset mais recente...")
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 datasets_dir = os.path.join(base_dir, "Datasets")
 arquivos_csv = [f for f in os.listdir(datasets_dir) if re.match(r'dataset_rgb_rotulado\d+\.csv', f)]
 if not arquivos_csv:
-    raise FileNotFoundError("❌ Nenhum arquivo encontrado.")
+    raise FileNotFoundError("Nenhum arquivo encontrado.")
 ultimo_csv = sorted(arquivos_csv, key=lambda x: int(re.findall(r'\d+', x)[0]))[-1]
 caminho_csv = os.path.join(datasets_dir, ultimo_csv)
-print(f"✅ Usando o dataset: {caminho_csv}")
+print(f"Usando o dataset: {caminho_csv}")
 
-print("📥 Etapa 2: Lendo e agrupando os dados...")
+print("2: Lendo e agrupando os dados...")
 df = pd.read_csv(caminho_csv).dropna().copy()
 df["GRUPO"] = df["GRUPO"].astype(int)
 
@@ -43,11 +43,11 @@ def agrupar_cores(df):
     return pd.DataFrame(dados, columns=[f'{c}{i}' for i in range(1,6) for c in ['R','G','B']]), rotulos
 
 X_rgb, y_bin = agrupar_cores(df)
-print(f"✅ Grupos válidos encontrados: {len(X_rgb)}")
+print(f"Grupos válidos encontrados: {len(X_rgb)}")
 if len(X_rgb) == 0:
-    raise ValueError("❌ Nenhum grupo válido encontrado.")
+    raise ValueError("Nenhum grupo válido encontrado.")
 
-print("🎨 Etapa 3: Convertendo RGB para LAB...")
+print("3: Convertendo RGB para LAB...")
 def rgb_quintuples_to_lab(df_rgb):
     labs = []
     for _, row in df_rgb.iterrows():
@@ -61,7 +61,7 @@ def rgb_quintuples_to_lab(df_rgb):
 
 X_lab = rgb_quintuples_to_lab(X_rgb)
 
-print("🧪 Etapa 4: Extraindo features...")
+print("4: Extraindo features...")
 def extrair_features(df_lab):
     features = pd.DataFrame()
     features['L_mean'] = df_lab[[f'L{i}' for i in range(1,6)]].mean(axis=1)
@@ -90,15 +90,18 @@ def extrair_features(df_lab):
 X_features = extrair_features(X_lab)
 X_final = pd.concat([X_lab, X_features], axis=1)
 
-print("⚙️ Etapa 5: Padronizando e selecionando as melhores features...")
+print("5: Padronizando e selecionando as melhores features...")
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X_final)
+noise_level = 0.8
+ruido = np.random.normal(0, noise_level, X_scaled.shape)
+X_scaled_com_ruido = X_scaled + ruido
 
-selector = SelectKBest(score_func=f_classif, k=20)
-X_selected = selector.fit_transform(X_scaled, y_bin)
+selector = SelectKBest(score_func=f_classif, k=2)
+X_selected = selector.fit_transform(X_scaled_com_ruido, y_bin) 
 feature_names = X_final.columns[selector.get_support()]
 
-print("📊 Etapa 6: Curva de aprendizado...")
+print("6: Curva de aprendizado...")
 model = GaussianNB()
 train_sizes, train_scores, test_scores = learning_curve(
     model, X_selected, y_bin,
@@ -119,17 +122,17 @@ plt.legend(loc="best")
 plt.tight_layout()
 plt.show()
 
-print("📈 Etapa 7: Validação cruzada...")
+print("7: Validação cruzada...")
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 cv_scores = cross_val_score(GaussianNB(), X_selected, y_bin, cv=cv, scoring='accuracy')
 print(f"Acurácias (CV): {cv_scores}")
 print(f"Acurácia média: {np.mean(cv_scores):.4f}")
 print(f"Desvio padrão: {np.std(cv_scores):.4f}")
 
-print("🧠 Etapa 8: Avaliação final do modelo (com threshold = 0.35 e priors = [0.25, 0.75])...")
+print("8: Avaliação final do modelo (com threshold = 0.35 e priors = [0.25, 0.75])...")
 X_train, X_test, y_train, y_test = train_test_split(X_selected, y_bin, test_size=0.2, random_state=42, stratify=y_bin)
 
-model = GaussianNB(priors=[0.25, 0.75])
+model = GaussianNB(priors=[0.25, 0.75], var_smoothing=1e-5) 
 model.fit(X_train, y_train)
 
 threshold = 0.35
@@ -150,12 +153,12 @@ print(f"Taxa de Falsos Positivos (FPR): {fpr:.4f}")
 print(f"Taxa de Falsos Negativos (FNR): {fnr:.4f}")
 
 if np.mean(cv_scores) >= 0.95 and fpr <= 0.05 and fnr <= 0.05:
-    print("✅ Modelo validado com sucesso e pronto para uso.")
+    print("Modelo validado com sucesso e pronto para uso.")
 else:
-    print("⚠️ Modelo ainda não atendeu aos critérios desejados.")
+    print("Modelo ainda não atendeu aos critérios desejados.")
 
 # Matriz de confusão visual
-print("🧮 Matriz de Confusão Visual")
+print("Matriz de Confusão Visual")
 fig, ax = plt.subplots(figsize=(6, 6))
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['nao_harmonico', 'harmonico'])
 disp.plot(ax=ax, cmap='Blues', colorbar=False, values_format='d')
@@ -164,8 +167,8 @@ plt.grid(False)
 plt.tight_layout()
 plt.show()
 
-# 💾 Etapa Final: Salvando o modelo treinado
-print("\n💾 Etapa Final: Salvando o modelo treinado...")
+# Etapa Final: Salvando o modelo treinado
+print("\nEtapa Final: Salvando o modelo treinado...")
 
 # Caminho relativo da pasta Scripts → para a pasta vizinha Modelo
 base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -177,10 +180,10 @@ caminho_modelo = os.path.join(modelo_dir, "modelo_naive_bayes_treinado.pkl")
 # Salva apenas o modelo final treinado com priors
 joblib.dump(model, caminho_modelo)
 
-print(f"✅ Modelo salvo com sucesso em: {caminho_modelo}")
+print(f"Modelo salvo com sucesso em: {caminho_modelo}")
 
-# 💾 Salvando scaler e seletor de features
-print("\n💾 Salvando scaler e seletor de features...")
+#Salvando scaler e seletor de features
+print("\nSalvando scaler e seletor de features...")
 
 # Criar pasta Modelo se não existir
 os.makedirs(modelo_dir, exist_ok=True)
@@ -193,5 +196,5 @@ joblib.dump(scaler, caminho_scaler)
 caminho_selector = os.path.join(modelo_dir, "selector_naive.pkl")
 joblib.dump(selector, caminho_selector)
 
-print(f"✅ Scaler salvo em: {caminho_scaler}")
-print(f"✅ Seletor salvo em: {caminho_selector}")
+print(f"Scaler salvo em: {caminho_scaler}")
+print(f"Seletor salvo em: {caminho_selector}")
